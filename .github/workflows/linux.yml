@@ -1,4 +1,4 @@
-name: C++ CI with Tests and Coverage
+name: C++ CI with Tests
 
 on:
   push:
@@ -15,34 +15,13 @@ jobs:
       with:
         submodules: recursive
     
-    - name: Install dependencies
-      run: sudo apt-get install -y lcov gcovr
-    
-    - name: Configure CMake with coverage
-      run: cmake -H. -B build -DBUILD_TESTS=ON -DENABLE_COVERAGE=ON
+    - name: Configure CMake
+      run: cmake -H. -B build -DBUILD_TESTS=ON
     
     - name: Build
       run: cmake --build build
     
-    - name: Run tests (generates .gcda files)
+    - name: Run tests
       run: |
         cd build
         ctest --output-on-failure
-        ls -la  # Проверяем, создались ли .gcda файлы
-    
-    - name: Generate coverage report
-      run: |
-        cd build
-        # Находим все .gcda файлы
-        find . -name "*.gcda" -type f
-        # Генерируем отчёт
-        lcov --capture --directory . --output-file coverage.info --no-external --ignore-errors empty
-        lcov --remove coverage.info '/usr/*' '*/third-party/*' '*/tests/*' --output-file coverage.info --ignore-errors empty
-        lcov --list coverage.info
-    
-    - name: Upload coverage to Coveralls
-      uses: coverallsapp/github-action@v2
-      with:
-        file: build/coverage.info
-        format: lcov
-        github-token: ${{ secrets.GITHUB_TOKEN }}
