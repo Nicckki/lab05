@@ -1,4 +1,4 @@
-name: C++ CI with Tests and Coverage
+name: C++ CI
 
 on:
   push:
@@ -9,50 +9,31 @@ on:
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
-    
+
     steps:
     - uses: actions/checkout@v4
       with:
         submodules: recursive
-    
+
     - name: Install dependencies
       run: sudo apt-get install -y gcovr
-    
+
     - name: Configure CMake with coverage
-      run: cmake -H. -B build -DBUILD_TESTS=ON -DENABLE_COVERAGE=ON
-    
+      run: |
+        cmake -B build -DBUILD_TESTS=ON \
+              -DCMAKE_CXX_FLAGS="--coverage -O0 -g" \
+              -DCMAKE_C_FLAGS="--coverage -O0 -g" \
+              -DCMAKE_EXE_LINKER_FLAGS="--coverage"
+
     - name: Build
-      run: cmake --build build
-    
+      run: cmake --build build --parallel
+
     - name: Run tests
       run: |
         cd build
         ctest --output-on-failure
-    
-    - name: Generate coverage report (only banking/src)
+
+    - name: Generate and display coverage
       run: |
         cd build
-        # Только файлы Account.cpp и Transaction.cpp
-        gcovr --root .. \
-              --filter '.*/banking/src/Account.cpp' \
-              --filter '.*/banking/src/Transaction.cpp' \
-              --xml --output coverage.xml
-        gcovr --root .. \
-              --filter '.*/banking/src/Account.cpp' \
-              --filter '.*/banking/src/Transaction.cpp' \
-              --txt | tee coverage.txt
-    
-    - name: Show coverage summary
-      run: |
-        cd build
-        gcovr --root .. \
-              --filter '.*/banking/src/Account.cpp' \
-              --filter '.*/banking/src/Transaction.cpp' \
-              --txt
-    
-    - name: Upload coverage to Coveralls
-      uses: coverallsapp/github-action@v2
-      with:
-        github-token: ${{ secrets.GITHUB_TOKEN }}
-        file: build/coverage.xml
-        format: cobertura
+        gcovr --root .. --filter '.*/banking/src/.*' --txt
