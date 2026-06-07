@@ -15,13 +15,15 @@ public:
     explicit Account(int id);
     Account(int id, double initial_balance);
     
-    int getId() const;
-    double getBalance() const;
-    void deposit(double amount);
-    bool withdraw(double amount);
+    virtual ~Account() = default;
     
-    void lock() const;
-    void unlock() const;
+    virtual int getId() const;
+    virtual double getBalance() const;
+    virtual void deposit(double amount);
+    virtual bool withdraw(double amount);
+    
+    virtual void lock() const;
+    virtual void unlock() const;
 };
 
 } // namespace banking

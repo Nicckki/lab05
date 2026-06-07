@@ -14,3 +14,10 @@ add_library(banking STATIC
 target_include_directories(banking PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
+
+# Флаги для покрытия кода (если нужно)
+option(ENABLE_COVERAGE "Enable coverage reporting" OFF)
+if(ENABLE_COVERAGE)
+    target_compile_options(banking PUBLIC --coverage -O0 -g)
+    target_link_options(banking PUBLIC --coverage)
+endif()

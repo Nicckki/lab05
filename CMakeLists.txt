@@ -4,37 +4,41 @@ project(lab05)
 set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-option(BUILD_EXAMPLES "Build examples" OFF)
 option(BUILD_TESTS "Build tests" OFF)
 
-# Библиотека print (из основной работы)
-add_library(print STATIC ${CMAKE_CURRENT_SOURCE_DIR}/sources/print.cpp)
+# Библиотека print
+add_library(print STATIC sources/print.cpp)
+target_include_directories(print PUBLIC include)
 
-target_include_directories(print PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/include
+# Библиотека banking
+add_library(banking STATIC
+    banking/src/Account.cpp
+    banking/src/Transaction.cpp
 )
+target_include_directories(banking PUBLIC banking/include)
 
-# Библиотека banking (для ДЗ)
-add_subdirectory(banking)
-
-# Подключаем GTest и тесты
+# Тесты
 if(BUILD_TESTS)
     enable_testing()
     add_subdirectory(third-party/gtest)
     
-    # Тесты для библиотеки print
-    file(GLOB PRINT_TEST_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/tests/print/*.cpp")
-    if(PRINT_TEST_SOURCES)
-        add_executable(check_print ${PRINT_TEST_SOURCES})
-        target_link_libraries(check_print print gtest_main)
-        add_test(NAME check_print COMMAND check_print)
-    endif()
+    # Тест для print
+    add_executable(check_print tests/print/test_print.cpp)
+    target_link_libraries(check_print print gtest_main)
+    add_test(NAME check_print COMMAND check_print)
     
-    # Тесты для библиотеки banking
-    file(GLOB BANKING_TEST_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/tests/banking/*.cpp")
-    if(BANKING_TEST_SOURCES)
-        add_executable(check_banking ${BANKING_TEST_SOURCES})
-        target_link_libraries(check_banking banking gtest_main)
-        add_test(NAME check_banking COMMAND check_banking)
-    endif()
+    # Тесты для banking (обычные)
+    add_executable(check_banking 
+        tests/banking/test_account.cpp
+        tests/banking/test_transaction.cpp
+    )
+    target_link_libraries(check_banking banking gtest_main)
+    add_test(NAME check_banking COMMAND check_banking)
+    
+    # Тесты с mock-объектами
+    add_executable(check_banking_mock 
+        tests/banking/test_transaction_mock.cpp
+    )
+    target_link_libraries(check_banking_mock banking gtest_main gmock_main)
+    add_test(NAME check_banking_mock COMMAND check_banking_mock)
 endif()
