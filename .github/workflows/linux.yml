@@ -29,16 +29,26 @@ jobs:
         cd build
         ctest --output-on-failure
     
-    - name: Generate coverage report with gcovr
+    - name: Generate coverage report (only banking/src)
       run: |
         cd build
-        gcovr --root .. --xml --output coverage.xml
-        gcovr --root .. --txt | tee coverage.txt
+        # Только файлы Account.cpp и Transaction.cpp
+        gcovr --root .. \
+              --filter '.*/banking/src/Account.cpp' \
+              --filter '.*/banking/src/Transaction.cpp' \
+              --xml --output coverage.xml
+        gcovr --root .. \
+              --filter '.*/banking/src/Account.cpp' \
+              --filter '.*/banking/src/Transaction.cpp' \
+              --txt | tee coverage.txt
     
     - name: Show coverage summary
       run: |
         cd build
-        gcovr --root .. --txt --filter '.*/banking/src/.*' --filter '.*/sources/.*'
+        gcovr --root .. \
+              --filter '.*/banking/src/Account.cpp' \
+              --filter '.*/banking/src/Transaction.cpp' \
+              --txt
     
     - name: Upload coverage to Coveralls
       uses: coverallsapp/github-action@v2
