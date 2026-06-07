@@ -6,7 +6,7 @@
 
 ## Tutorial
 
-Так как _Travis_ мы не используем, делаем все через _Github Actions_. Также пропускаем ДЗ, так как задание основано на Travis.
+Так как _Travis_ мы не используем, делаем все через _Github Actions_.
 
 Пропустим всю уже привычную преамбулу и сразу приступим к командам, непосредственно относящимся к лабе.
 
@@ -338,6 +338,492 @@ git push origin main
     To https://github.com/Nicckki/lab05.git
        4fa562e..6717b74  main -> main
 </details>
+
+# Домашнее задание
+
+## Создание библиотеки banking
+Реализована библиотека для банковских операций с классами Account и Transaction.
+
+Класс Account (Account.hpp)
+
+```hpp
+#ifndef BANKING_ACCOUNT_HPP
+#define BANKING_ACCOUNT_HPP
+
+#include <mutex>
+
+namespace banking {
+
+class Account {
+private:
+    int id;
+    double balance;
+    mutable std::mutex mtx;
+
+public:
+    explicit Account(int id);
+    Account(int id, double initial_balance);
+    
+    virtual ~Account() = default;
+    
+    virtual int getId() const;
+    virtual double getBalance() const;
+    virtual void deposit(double amount);
+    virtual bool withdraw(double amount);
+    
+    virtual void lock() const;
+    virtual void unlock() const;
+};
+
+} // namespace banking
+
+#endif // BANKING_ACCOUNT_HPP
+```
+
+Класс Account (Account.cpp)
+
+```cpp
+#include "banking/Account.hpp"
+#include <stdexcept>
+
+namespace banking {
+
+Account::Account(int id) : id(id), balance(0.0) {}
+
+Account::Account(int id, double initial_balance) : id(id), balance(initial_balance) {
+    if (initial_balance < 0) {
+        throw std::invalid_argument("Initial balance cannot be negative");
+    }
+}
+
+int Account::getId() const { return id; }
+
+double Account::getBalance() const { return balance; }
+
+void Account::deposit(double amount) {
+    if (amount < 0) {
+        throw std::invalid_argument("Deposit amount cannot be negative");
+    }
+    balance += amount;
+}
+
+bool Account::withdraw(double amount) {
+    if (amount < 0) {
+        throw std::invalid_argument("Withdrawal amount cannot be negative");
+    }
+    if (amount > balance) return false;
+    balance -= amount;
+    return true;
+}
+
+void Account::lock() const { mtx.lock(); }
+void Account::unlock() const { mtx.unlock(); }
+
+} // namespace banking
+```
+
+Класс Transaction (Transaction.hpp)
+
+```hpp
+#ifndef BANKING_TRANSACTION_HPP
+#define BANKING_TRANSACTION_HPP
+
+#include "Account.hpp"
+#include <memory>
+#include <chrono>
+
+namespace banking {
+
+enum class TransactionStatus {
+    PENDING,
+    COMPLETED,
+    FAILED,
+    CANCELLED
+};
+
+class Transaction {
+private:
+    int id;
+    std::shared_ptr<Account> fromAccount;
+    std::shared_ptr<Account> toAccount;
+    double amount;
+    TransactionStatus status;
+    std::chrono::system_clock::time_point timestamp;
+
+public:
+    Transaction(int id, std::shared_ptr<Account> from, std::shared_ptr<Account> to, double amount);
+    
+    bool execute();
+    void cancel();
+    TransactionStatus getStatus() const;
+    double getAmount() const;
+    int getId() const;
+};
+
+} // namespace banking
+
+#endif // BANKING_TRANSACTION_HPP
+```
+
+Класс Transaction (Transaction.cpp)
+
+```cpp
+#include "banking/Transaction.hpp"
+
+namespace banking {
+
+Transaction::Transaction(int id, std::shared_ptr<Account> from, 
+                         std::shared_ptr<Account> to, double amount)
+    : id(id), fromAccount(from), toAccount(to), amount(amount), 
+      status(TransactionStatus::PENDING) {
+    timestamp = std::chrono::system_clock::now();
+}
+
+bool Transaction::execute() {
+    if (status != TransactionStatus::PENDING) return false;
+    
+    if (fromAccount) fromAccount->lock();
+    if (toAccount) toAccount->lock();
+    
+    bool success = false;
+    
+    if (fromAccount && toAccount) {
+        if (fromAccount->withdraw(amount)) {
+            toAccount->deposit(amount);
+            success = true;
+        }
+    } else if (fromAccount && !toAccount) {
+        success = fromAccount->withdraw(amount);
+    } else if (!fromAccount && toAccount) {
+        toAccount->deposit(amount);
+        success = true;
+    }
+    
+    if (fromAccount) fromAccount->unlock();
+    if (toAccount) toAccount->unlock();
+    
+    status = success ? TransactionStatus::COMPLETED : TransactionStatus::FAILED;
+    return success;
+}
+
+void Transaction::cancel() {
+    if (status == TransactionStatus::PENDING) {
+        status = TransactionStatus::CANCELLED;
+    }
+}
+
+TransactionStatus Transaction::getStatus() const { return status; }
+double Transaction::getAmount() const { return amount; }
+int Transaction::getId() const { return id; }
+
+} // namespace banking
+```
+
+## Тесты для библиотеки banking
+
+test_account.cpp
+
+```cpp
+#include <gtest/gtest.h>
+#include "banking/Account.hpp"
+
+using namespace banking;
+
+TEST(AccountTest, ConstructorWithIdOnly) {
+    Account acc(1);
+    EXPECT_EQ(acc.getId(), 1);
+    EXPECT_DOUBLE_EQ(acc.getBalance(), 0.0);
+}
+
+TEST(AccountTest, ConstructorWithInitialBalance) {
+    Account acc(1, 100.0);
+    EXPECT_DOUBLE_EQ(acc.getBalance(), 100.0);
+}
+
+TEST(AccountTest, ConstructorThrowsOnNegativeBalance) {
+    EXPECT_THROW(Account acc(1, -50.0), std::invalid_argument);
+}
+
+TEST(AccountTest, Deposit) {
+    Account acc(1, 100.0);
+    acc.deposit(50.0);
+    EXPECT_DOUBLE_EQ(acc.getBalance(), 150.0);
+}
+
+TEST(AccountTest, DepositNegativeThrows) {
+    Account acc(1, 100.0);
+    EXPECT_THROW(acc.deposit(-10.0), std::invalid_argument);
+}
+
+TEST(AccountTest, WithdrawSuccess) {
+    Account acc(1, 100.0);
+    EXPECT_TRUE(acc.withdraw(30.0));
+    EXPECT_DOUBLE_EQ(acc.getBalance(), 70.0);
+}
+
+TEST(AccountTest, WithdrawMoreThanBalance) {
+    Account acc(1, 100.0);
+    EXPECT_FALSE(acc.withdraw(150.0));
+    EXPECT_DOUBLE_EQ(acc.getBalance(), 100.0);
+}
+
+TEST(AccountTest, WithdrawNegativeThrows) {
+    Account acc(1, 100.0);
+    EXPECT_THROW(acc.withdraw(-10.0), std::invalid_argument);
+}
+```
+
+test_transaction.cpp
+
+```cpp
+#include <gtest/gtest.h>
+#include "banking/Transaction.hpp"
+#include "banking/Account.hpp"
+#include <memory>
+
+using namespace banking;
+
+TEST(TransactionTest, TransferBetweenAccounts) {
+    auto from = std::make_shared<Account>(1, 100.0);
+    auto to = std::make_shared<Account>(2, 50.0);
+    
+    Transaction tx(1, from, to, 30.0);
+    EXPECT_TRUE(tx.execute());
+    EXPECT_EQ(tx.getStatus(), TransactionStatus::COMPLETED);
+    EXPECT_DOUBLE_EQ(from->getBalance(), 70.0);
+    EXPECT_DOUBLE_EQ(to->getBalance(), 80.0);
+}
+
+TEST(TransactionTest, InsufficientFunds) {
+    auto from = std::make_shared<Account>(1, 100.0);
+    auto to = std::make_shared<Account>(2, 50.0);
+    
+    Transaction tx(1, from, to, 150.0);
+    EXPECT_FALSE(tx.execute());
+    EXPECT_EQ(tx.getStatus(), TransactionStatus::FAILED);
+}
+
+TEST(TransactionTest, DepositOnly) {
+    auto to = std::make_shared<Account>(2, 50.0);
+    
+    Transaction tx(1, nullptr, to, 30.0);
+    EXPECT_TRUE(tx.execute());
+    EXPECT_DOUBLE_EQ(to->getBalance(), 80.0);
+}
+
+TEST(TransactionTest, WithdrawOnly) {
+    auto from = std::make_shared<Account>(1, 100.0);
+    
+    Transaction tx(1, from, nullptr, 30.0);
+    EXPECT_TRUE(tx.execute());
+    EXPECT_DOUBLE_EQ(from->getBalance(), 70.0);
+}
+
+TEST(TransactionTest, CancelPendingTransaction) {
+    auto from = std::make_shared<Account>(1, 100.0);
+    auto to = std::make_shared<Account>(2, 50.0);
+    
+    Transaction tx(1, from, to, 30.0);
+    tx.cancel();
+    EXPECT_EQ(tx.getStatus(), TransactionStatus::CANCELLED);
+}
+
+TEST(TransactionTest, ExecuteAfterCancelDoesNothing) {
+    auto from = std::make_shared<Account>(1, 100.0);
+    auto to = std::make_shared<Account>(2, 50.0);
+    
+    Transaction tx(1, from, to, 30.0);
+    tx.cancel();
+    
+    EXPECT_FALSE(tx.execute());
+    EXPECT_EQ(tx.getStatus(), TransactionStatus::CANCELLED);
+}
+```
+
+## Mock-тесты с использованием Google Mock
+
+MockAccount.hpp
+
+```hpp
+#ifndef MOCK_ACCOUNT_HPP
+#define MOCK_ACCOUNT_HPP
+
+#include <gmock/gmock.h>
+#include "banking/Account.hpp"
+
+namespace banking {
+
+class MockAccount : public Account {
+public:
+    MockAccount(int id) : Account(id) {}
+    MockAccount(int id, double balance) : Account(id, balance) {}
+    
+    MOCK_METHOD(int, getId, (), (const, override));
+    MOCK_METHOD(double, getBalance, (), (const, override));
+    MOCK_METHOD(void, deposit, (double amount), (override));
+    MOCK_METHOD(bool, withdraw, (double amount), (override));
+    MOCK_METHOD(void, lock, (), (const, override));
+    MOCK_METHOD(void, unlock, (), (const, override));
+};
+
+} // namespace banking
+
+#endif // MOCK_ACCOUNT_HPP
+```
+
+test_transaction_mock.cpp
+
+```cpp
+#include <gtest/gtest.h>
+#include <gmock/gmock.h>
+#include "banking/Transaction.hpp"
+#include "../mocks/MockAccount.hpp"
+
+using namespace banking;
+using ::testing::_;
+using ::testing::Return;
+using ::testing::Exactly;
+
+class TransactionMockTest : public ::testing::Test {
+protected:
+    void SetUp() override {
+        fromMock = std::make_shared<MockAccount>(1, 100.0);
+        toMock = std::make_shared<MockAccount>(2, 50.0);
+    }
+    
+    std::shared_ptr<MockAccount> fromMock;
+    std::shared_ptr<MockAccount> toMock;
+};
+
+TEST_F(TransactionMockTest, TransferUsesWithdrawAndDeposit) {
+    EXPECT_CALL(*fromMock, withdraw(30.0))
+        .Times(Exactly(1))
+        .WillOnce(Return(true));
+    EXPECT_CALL(*toMock, deposit(30.0))
+        .Times(Exactly(1));
+    
+    Transaction tx(1, fromMock, toMock, 30.0);
+    EXPECT_TRUE(tx.execute());
+    EXPECT_EQ(tx.getStatus(), TransactionStatus::COMPLETED);
+}
+
+TEST_F(TransactionMockTest, TransferFailsWhenWithdrawFails) {
+    EXPECT_CALL(*fromMock, withdraw(30.0))
+        .Times(Exactly(1))
+        .WillOnce(Return(false));
+    EXPECT_CALL(*toMock, deposit(30.0))
+        .Times(0);
+    
+    Transaction tx(1, fromMock, toMock, 30.0);
+    EXPECT_FALSE(tx.execute());
+    EXPECT_EQ(tx.getStatus(), TransactionStatus::FAILED);
+}
+
+TEST_F(TransactionMockTest, WithdrawOnlyUsesWithdraw) {
+    EXPECT_CALL(*fromMock, withdraw(30.0))
+        .Times(Exactly(1))
+        .WillOnce(Return(true));
+    
+    Transaction tx(1, fromMock, nullptr, 30.0);
+    EXPECT_TRUE(tx.execute());
+}
+
+TEST_F(TransactionMockTest, DepositOnlyUsesDeposit) {
+    EXPECT_CALL(*toMock, deposit(30.0))
+        .Times(Exactly(1));
+    
+    Transaction tx(1, nullptr, toMock, 30.0);
+    EXPECT_TRUE(tx.execute());
+}
+```
+
+## Обновленный CMakeLists.txt
+
+```cmake
+cmake_minimum_required(VERSION 3.10)
+project(lab05)
+
+set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+option(BUILD_TESTS "Build tests" OFF)
+
+# Библиотека print
+add_library(print STATIC sources/print.cpp)
+target_include_directories(print PUBLIC include)
+
+# Библиотека banking
+add_library(banking STATIC
+    banking/src/Account.cpp
+    banking/src/Transaction.cpp
+)
+target_include_directories(banking PUBLIC banking/include)
+
+# Тесты
+if(BUILD_TESTS)
+    enable_testing()
+    add_subdirectory(third-party/gtest)
+    
+    add_executable(check_print tests/print/test_print.cpp)
+    target_link_libraries(check_print print gtest_main)
+    add_test(NAME check_print COMMAND check_print)
+    
+    add_executable(check_banking 
+        tests/banking/test_account.cpp
+        tests/banking/test_transaction.cpp
+    )
+    target_link_libraries(check_banking banking gtest_main)
+    add_test(NAME check_banking COMMAND check_banking)
+    
+    add_executable(check_banking_mock 
+        tests/banking/test_transaction_mock.cpp
+    )
+    target_link_libraries(check_banking_mock banking gtest_main gmock_main)
+    add_test(NAME check_banking_mock COMMAND check_banking_mock)
+endif()
+```
+
+## Результаты тестирования
+
+```bash
+cd build
+ctest --output-on-failure
+```
+
+```bash
+Test project /home/vboxuser/workspace/lab05/build
+    Start 1: check_print
+1/3 Test #1: check_print .......................   Passed    0.01 sec
+    Start 2: check_banking
+2/3 Test #2: check_banking .....................   Passed    0.01 sec
+    Start 3: check_banking_mock
+3/3 Test #3: check_banking_mock ................   Passed    0.02 sec
+
+100% tests passed, 0 tests failed out of 3
+```
+
+Покрытие кода
+
+```bash
+gcovr --root .. --filter '.*/banking/src/.*' --txt
+```
+
+Вывод
+
+```bash
+------------------------------------------------------------------------------
+                           GCC Code Coverage Report
+Directory: ..
+------------------------------------------------------------------------------
+File                                       Lines    Exec  Cover
+------------------------------------------------------------------------------
+banking/src/Account.cpp                        27      27   100%
+banking/src/Transaction.cpp                    35      35   100%
+------------------------------------------------------------------------------
+TOTAL                                          62      62   100%
+------------------------------------------------------------------------------
+```
+
 
 ## Вывод
 
